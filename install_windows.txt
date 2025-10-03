@@ -1,0 +1,19 @@
+# Copy and paste everything below into PowerShell (Run as Administrator)
+
+Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+choco install git -y
+choco install python310 -y
+$env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+cd F:\
+if (!(Test-Path "Uma")) { mkdir Uma }
+cd Uma
+git clone https://github.com/JordanRO2/umamusume-auto-train.git
+cd umamusume-auto-train
+python -m venv venv
+.\venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+pip install pyautogui opencv-python numpy Pillow pygetwindow keyboard mouse uvicorn fastapi pytesseract easyocr requests python-multipart aiofiles UnityPy
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+Copy-Item config.template.json config.json
+Write-Host "Installation Complete! Running bot..." -ForegroundColor Green
+python main.py
