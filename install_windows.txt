@@ -1,8 +1,8 @@
-# Copy and paste everything below into PowerShell (Run as Administrator)
+# INSTALLATION - Copy and paste ALL lines into PowerShell (Admin):
+# Navigate to desired folder first (example: cd F:\Uma)
 
-Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
-choco install git -y
-choco install python310 -y
+winget install Git.Git -e --silent
+winget install Python.Python.3.10 -e --silent
 $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
 git clone https://github.com/JordanRO2/umamusume-auto-train.git
 cd umamusume-auto-train
@@ -11,5 +11,4 @@ python -m venv venv
 python -m pip install --upgrade pip
 pip install -r requirements.txt
 Copy-Item config.template.json config.json
-Write-Host "Installation Complete! Running bot..." -ForegroundColor Green
 python main.py
