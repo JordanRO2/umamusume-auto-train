@@ -4,42 +4,97 @@ from PIL import ImageGrab, ImageStat
 
 from utils.log import info, warning, error, debug
 from utils.screenshot import capture_region
+from utils.debug_mode import (
+    DEBUG_MODE, show_debug_info, draw_search_zone,
+    log_search_attempt, wait_for_step
+)
+from pathlib import Path
 
 def match_template(template_path, region=None, threshold=0.85):
+  # Debug: Show what we're searching for
+  if DEBUG_MODE:
+    from utils.debug_mode import log_message, save_debug_screenshot
+    log_message(f"match_template called: {template_path}, region={region}, threshold={threshold}")
+    show_debug_info(template_path=template_path, region=region, threshold=threshold)
+
   # Get screenshot
   if region:
     screen = np.array(ImageGrab.grab(bbox=region))  # (left, top, right, bottom)
   else:
     screen = np.array(ImageGrab.grab())
-  screen = cv2.cvtColor(screen, cv2.COLOR_RGB2BGR)
+  screen_bgr = cv2.cvtColor(screen, cv2.COLOR_RGB2BGR)
 
-#  cv2.namedWindow("image")
-#  cv2.moveWindow("image", -900, 0)
-#  cv2.imshow("image", screen)
-#  cv2.waitKey(5)
+  # Debug: Save search region to file instead of blocking display
+  if DEBUG_MODE:
+    from utils.debug_mode import save_debug_screenshot
+    debug_image = screen_bgr.copy()
+    if region:
+      cv2.rectangle(debug_image, (0, 0), (debug_image.shape[1]-1, debug_image.shape[0]-1), (0, 255, 0), 3)
+      cv2.putText(debug_image, f"Search: {template_path}", (10, 30),
+                 cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+    save_debug_screenshot(debug_image, f"search_{Path(template_path).stem}")
 
   # Load template
   template = cv2.imread(template_path, cv2.IMREAD_COLOR)  # safe default
   if template.shape[2] == 4:
     template = cv2.cvtColor(template, cv2.COLOR_BGRA2BGR)
-  result = cv2.matchTemplate(screen, template, cv2.TM_CCOEFF_NORMED)
+  result = cv2.matchTemplate(screen_bgr, template, cv2.TM_CCOEFF_NORMED)
   loc = np.where(result >= threshold)
 
   h, w = template.shape[:2]
   boxes = [(x, y, w, h) for (x, y) in zip(*loc[::-1])]
 
-  return deduplicate_boxes(boxes)
+  filtered_boxes = deduplicate_boxes(boxes)
+
+  # Debug: Log and save matches found
+  if DEBUG_MODE:
+    from utils.debug_mode import log_message, save_debug_screenshot
+    log_message(f"Found {len(filtered_boxes)} matches (before dedup: {len(boxes)})")
+
+    if len(filtered_boxes) > 0:
+      # Draw matches on debug image and save
+      result_image = screen_bgr.copy()
+      for x, y, w, h in filtered_boxes:
+        cv2.rectangle(result_image, (x, y), (x+w, y+h), (0, 255, 0), 2)
+        cv2.putText(result_image, "MATCH", (x, y-5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+      save_debug_screenshot(result_image, f"found_{Path(template_path).stem}")
+
+    # Log the search attempt
+    log_search_attempt(f"match_template: {template_path}", region, len(filtered_boxes) > 0,
+                      f"Found {len(filtered_boxes)} matches")
+
+    # Wait for user to continue in step-by-step mode
+    wait_for_step()
+
+  return filtered_boxes
 
 def multi_match_templates(templates, screen=None, threshold=0.85):
+  if DEBUG_MODE:
+    debug(f"Starting multi-template match for {len(templates)} templates")
+    show_debug_info(threshold=threshold)
+
   if screen is None:
     screen = ImageGrab.grab()
   screen_bgr = cv2.cvtColor(np.array(screen), cv2.COLOR_RGB2BGR)
 
+  # Debug: Log multi-search start
+  if DEBUG_MODE:
+    from utils.debug_mode import log_message, save_debug_screenshot
+    debug_image = screen_bgr.copy()
+    cv2.putText(debug_image, f"Multi-search: {list(templates.keys())}", (10, 30),
+               cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
+    save_debug_screenshot(debug_image, "multi_search_start")
+
   results = {}
   for name, path in templates.items():
+    if DEBUG_MODE:
+      debug(f"Searching for template: {name} -> {path}")
+
     template = cv2.imread(path, cv2.IMREAD_COLOR)
     if template is None:
       results[name] = []
+      if DEBUG_MODE:
+        warning(f"Template not found: {path}")
       continue
     if template.shape[2] == 4:
       template = cv2.cvtColor(template, cv2.COLOR_BGRA2BGR)
@@ -49,6 +104,26 @@ def multi_match_templates(templates, screen=None, threshold=0.85):
     h, w = template.shape[:2]
     boxes = [(x, y, w, h) for (x, y) in zip(*loc[::-1])]
     results[name] = boxes
+
+    # Debug: Log each template result
+    if DEBUG_MODE:
+      debug(f"  {name}: {len(boxes)} matches found")
+      if len(boxes) > 0:
+        # Draw this template's matches
+        for x, y, w, h in boxes[:5]:  # Show max 5 matches
+          cv2.rectangle(debug_image, (x, y), (x+w, y+h), (0, 255, 0), 2)
+          cv2.putText(debug_image, name, (x, y-5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+      log_search_attempt(f"multi_match: {name}", None, len(boxes) > 0, f"{len(boxes)} matches")
+
+  # Debug: Save all matches combined
+  if DEBUG_MODE:
+    from utils.debug_mode import log_message, save_debug_screenshot
+    total_matches = sum(len(boxes) for boxes in results.values())
+    log_message(f"Total matches across all templates: {total_matches}")
+    if total_matches > 0:
+      save_debug_screenshot(debug_image, "multi_search_results")
+    wait_for_step()
+
   return results
 
 def deduplicate_boxes(boxes, min_dist=5):

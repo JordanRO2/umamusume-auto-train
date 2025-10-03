@@ -5,6 +5,7 @@ import uvicorn
 import keyboard
 import pyautogui
 import time
+import sys
 
 import utils.constants as constants
 from utils.log import info, warning, error, debug
@@ -13,8 +14,12 @@ from core.execute import career_lobby
 import core.state as state
 from server.main import app
 from update_config import update_config
+from utils.debug_mode import enable_debug_mode, disable_debug_mode
 
 hotkey = "f1"
+debug_hotkey = "f2"  # Toggle debug mode
+step_hotkey = "f3"   # Toggle step-by-step mode
+editor_hotkey = "f4"  # Open region editor
 
 def focus_umamusume():
   try:
@@ -61,21 +66,74 @@ def focus_umamusume():
 
 def main():
   print("Uma Auto!")
+
+  # Check for debug mode arguments
+  if "--debug" in sys.argv or "-d" in sys.argv:
+    enable_debug_mode(show_zones=True, step_mode=False)
+    info("Debug mode enabled via command line")
+  if "--step" in sys.argv or "-s" in sys.argv:
+    enable_debug_mode(show_zones=True, step_mode=True)
+    info("Step-by-step debug mode enabled via command line")
+
   try:
     state.reload_config()
     state.stop_event.clear()
 
     if focus_umamusume():
       info(f"Config: {state.CONFIG_NAME}")
+      info("Press F2 for debug, F3 for step mode, F4 for region editor")
       career_lobby()
     else:
       error("Failed to focus Umamusume window")
   except Exception as e:
     error(f"Error in main thread: {e}")
   finally:
+    disable_debug_mode()
     debug("[BOT] Stopped.")
 
+def toggle_debug_mode():
+  """Toggle debug mode on/off"""
+  from utils.debug_mode import DEBUG_MODE
+  if DEBUG_MODE:
+    disable_debug_mode()
+    info("[DEBUG] Debug mode disabled")
+  else:
+    enable_debug_mode(show_zones=True, step_mode=False)
+    info("[DEBUG] Debug mode enabled (F3 for step-by-step)")
+
+def toggle_step_mode():
+  """Toggle step-by-step mode on/off"""
+  from utils.debug_mode import DEBUG_MODE, STEP_BY_STEP
+  if not DEBUG_MODE:
+    enable_debug_mode(show_zones=True, step_mode=True)
+    info("[DEBUG] Step-by-step mode enabled")
+  else:
+    if STEP_BY_STEP:
+      enable_debug_mode(show_zones=True, step_mode=False)
+      info("[DEBUG] Step-by-step mode disabled, debug still active")
+    else:
+      enable_debug_mode(show_zones=True, step_mode=True)
+      info("[DEBUG] Step-by-step mode enabled")
+
+def open_region_editor():
+  """Open the interactive region editor"""
+  from utils.simple_region_editor import SimpleTransparentEditor
+  info("[EDITOR] Opening TRANSPARENT overlay editor...")
+  info("[EDITOR] You can see and edit regions over the live game!")
+  info("[EDITOR] Controls: 'n'=new, 't'=transparency, 's'=save, ESC=exit")
+
+  # Note: Bot continues running with overlay
+  editor = SimpleTransparentEditor()
+  editor.run()
+
+  info("[EDITOR] Transparent overlay closed")
+
 def hotkey_listener():
+  # Register debug hotkeys
+  keyboard.add_hotkey(debug_hotkey, toggle_debug_mode)
+  keyboard.add_hotkey(step_hotkey, toggle_step_mode)
+  keyboard.add_hotkey(editor_hotkey, open_region_editor)
+
   while True:
     keyboard.wait(hotkey)
     with state.bot_lock:

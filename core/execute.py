@@ -15,6 +15,12 @@ import utils.constants as constants
 from core.recognizer import is_btn_active, match_template, multi_match_templates
 from utils.scenario import ura
 from core.skill import buy_skill
+import cv2
+from utils.debug_mode import (
+    DEBUG_MODE, enable_debug_mode, disable_debug_mode,
+    wait_for_step, show_debug_info, visualize_all_zones,
+    log_message, save_debug_screenshot
+)
 
 templates = {
   "event": "assets/icons/event_choice_1.png",
@@ -41,6 +47,12 @@ def click(img: str = None, confidence: float = 0.8, minSearch:float = 2, click: 
   if not state.is_bot_running:
     return False
 
+  # Debug: Log click attempt
+  if DEBUG_MODE:
+    action = f"Click: {img or 'boxes'}" + (f" - {text}" if text else "")
+    log_message(action)
+    show_debug_info(template_path=img, region=region)
+
   if boxes:
     if isinstance(boxes, list):
       if len(boxes) == 0:
@@ -53,12 +65,22 @@ def click(img: str = None, confidence: float = 0.8, minSearch:float = 2, click: 
       debug(text)
     x, y, w, h = box
     center = (x + w // 2, y + h // 2)
+
+    # Debug: Log where we're clicking
+    if DEBUG_MODE:
+      log_message(f"Clicking at: ({center[0]}, {center[1]})")
+      wait_for_step()
+
     pyautogui.moveTo(center[0], center[1], duration=0.225)
     pyautogui.click(clicks=click, interval=0.15)
     return True
 
   if img is None:
     return False
+
+  # Debug: Log search attempt
+  if DEBUG_MODE:
+    log_message(f"Searching for button: {img} (confidence={confidence}, region={region})")
 
   if region:
     btn = pyautogui.locateCenterOnScreen(img, confidence=confidence, minSearchTime=minSearch, region=region)
@@ -67,9 +89,19 @@ def click(img: str = None, confidence: float = 0.8, minSearch:float = 2, click: 
   if btn:
     if text:
       debug(text)
+
+    # Debug: Log successful click
+    if DEBUG_MODE:
+      log_message(f"Button found at: {btn}")
+      wait_for_step()
+
     pyautogui.moveTo(btn, duration=0.225)
     pyautogui.click(clicks=click, interval=0.15)
     return True
+
+  # Debug: Log failed search
+  if DEBUG_MODE:
+    log_message(f"Button not found: {img}")
 
   return False
 
@@ -79,6 +111,12 @@ def go_to_training():
 def check_training():
   if state.stop_event.is_set():
     return {}
+
+  # Debug: Log training check
+  if DEBUG_MODE:
+    log_message("=== Starting Training Check ===")
+    visualize_all_zones(save_to_file=True, show_window=False)
+    wait_for_step()
 
   results = {}
 
@@ -372,8 +410,36 @@ def career_lobby():
   global PREFERRED_POSITION_SET
   PREFERRED_POSITION_SET = False
   while state.is_bot_running and not state.stop_event.is_set():
+    # Debug: Log current cycle
+    if DEBUG_MODE:
+      log_message("\n=== New Career Lobby Cycle ===")
+      # Only visualize zones periodically to avoid blocking
+      import time
+      current_time = time.time()
+      if not hasattr(career_lobby, 'last_zone_save'):
+        career_lobby.last_zone_save = 0
+      if current_time - career_lobby.last_zone_save > 30:  # Save zones every 30 seconds
+        visualize_all_zones(save_to_file=True, show_window=False)
+        career_lobby.last_zone_save = current_time
+
     screen = ImageGrab.grab()
     matches = multi_match_templates(templates, screen=screen)
+
+    # Debug: Log what was found
+    if DEBUG_MODE:
+      found_items = [name for name, boxes in matches.items() if boxes]
+      log_message(f"Found elements: {found_items if found_items else 'None'}")
+      if found_items:
+        # Save screenshot of found items
+        screen_bgr = cv2.cvtColor(np.array(screen), cv2.COLOR_RGB2BGR)
+        for name, boxes in matches.items():
+          if boxes:
+            for box in boxes[:1]:  # Just mark first match
+              x, y, w, h = box
+              cv2.rectangle(screen_bgr, (x, y), (x+w, y+h), (0, 255, 0), 2)
+              cv2.putText(screen_bgr, name, (x, y-5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+        save_debug_screenshot(screen_bgr, "lobby_matches")
+      wait_for_step()
 
     if click(boxes=matches["event"], text="Event found, selecting top choice."):
       continue
