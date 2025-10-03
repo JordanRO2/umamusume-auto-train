@@ -1,5 +1,5 @@
 # After installation, use this to run the bot daily
 
-cd F:\Uma\umamusume-auto-train
+cd umamusume-auto-train
 .\venv\Scripts\Activate.ps1
 python main.py
