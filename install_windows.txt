@@ -9,8 +9,7 @@ cd umamusume-auto-train
 python -m venv venv
 .\venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
-pip install pyautogui opencv-python numpy Pillow pygetwindow keyboard mouse uvicorn fastapi pytesseract easyocr requests python-multipart aiofiles UnityPy
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+pip install -r requirements.txt
 Copy-Item config.template.json config.json
 Write-Host "Installation Complete! Running bot..." -ForegroundColor Green
 python main.py
